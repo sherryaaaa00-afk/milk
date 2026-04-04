@@ -309,9 +309,11 @@ if (exportAllBtn) {
 
             function closeBkDialog() { overlay.remove(); }
             overlay.addEventListener('click', ev => { if (ev.target === overlay) closeBkDialog(); });
-            document.getElementById('_bk_cancel').onclick = closeBkDialog;
+            const bkCancelBtn = document.getElementById('_bk_cancel');
+            const bkConfirmBtn = document.getElementById('_bk_confirm');
+            if (bkCancelBtn) bkCancelBtn.onclick = closeBkDialog;
 
-            document.getElementById('_bk_confirm').onclick = async function() {
+            if (bkConfirmBtn) bkConfirmBtn.onclick = async function() {
                 const inclMsgs    = document.getElementById('_bk_msgs').checked;
                 const inclSet     = document.getElementById('_bk_settings').checked;
                 const inclCustom  = document.getElementById('_bk_custom').checked;

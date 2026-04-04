@@ -464,8 +464,10 @@ async function importAllData(file) {
                 </div>
             `;
             overlay.addEventListener('click', (ev) => { if (ev.target === overlay) { overlay.remove(); resolve(null); } });
-            document.getElementById('full-imp-cancel').onclick = () => { overlay.remove(); resolve(null); };
-            document.getElementById('full-imp-confirm').onclick = () => {
+            const fullImpCancelBtn = document.getElementById('full-imp-cancel');
+            const fullImpConfirmBtn = document.getElementById('full-imp-confirm');
+            if (fullImpCancelBtn) fullImpCancelBtn.onclick = () => { overlay.remove(); resolve(null); };
+            if (fullImpConfirmBtn) fullImpConfirmBtn.onclick = () => {
                 const selected = Array.from(overlay.querySelectorAll('input[type=checkbox]:checked'))
                     .map(i => i.dataset.cat);
                 overlay.remove();
