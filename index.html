@@ -18,8 +18,6 @@
     <meta name="apple-mobile-web-app-title" content="ʚ𝑳𝑶𝑽𝑬ɞ">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <link rel="stylesheet" href="css/styles.css">
 
@@ -87,17 +85,6 @@
                     </div>
 
                     <div class="splash-slide" data-index="4">
-                        <div class="splash-slide-tag">关于视频通话</div>
-                        <div class="splash-slide-title">纯粹的装饰</div>
-                        <div class="splash-slide-body">
-                            <strong>通话功能仅作为界面装饰存在，不具备任何实际通话或数据采集能力。</strong><br><br>
-                            本网站不包含任何摄像头调用逻辑，亦不存在隐私窥探行为。摄像头调用需要专项技术与额外费用，本项目从未采用，也没有这方面的意图。<br><br>
-                            近期流传的隐私传言，出发点或许是好意，但已造成不必要的焦虑。<em>在此郑重澄清：网站根本不具备视频传输功能。</em><br><br>
-                            <div class="splash-highlight-box">关闭浏览器摄像头权限是完全正确的做法——我支持每一位用户保护自己的隐私权益。若误解持续扩散，将考虑移除该装饰功能。</div>
-                        </div>
-                    </div>
-
-                    <div class="splash-slide" data-index="5">
                         <div class="splash-slide-tag">入场承诺</div>
                         <div class="splash-slide-title">请留下你的承诺</div>
                         <div class="splash-pledge-desc">在下方输入框中，<em style="color:rgba(var(--accent-color-rgb,197,164,126),0.8);font-style:normal;">逐字抄写</em>以下承诺，即可进入网站。</div>
@@ -113,7 +100,7 @@
                     <button class="splash-btn splash-btn-ghost" id="splash-prev-btn" disabled>
                         <i class="fas fa-arrow-left"></i> 上一页
                     </button>
-                    <span class="splash-page-num" id="splash-page-num">1 / 6</span>
+                    <span class="splash-page-num" id="splash-page-num">1 / 5</span>
                     <button class="splash-btn splash-btn-next" id="splash-next-btn">
                         下一页 <i class="fas fa-arrow-right"></i>
                     </button>
@@ -409,10 +396,6 @@
                 <i class="fas fa-hand-sparkles"></i><span>拍一拍</span>
             </div>
             <input type="text" class="modal-input" id="poke-input" placeholder="例如：拍了拍对方的肩膀"><div class="modal-buttons">
-                <div style="width:100%;display:flex;align-items:center;gap:8px;margin:6px 0 0;">
-                    <input type="checkbox" id="poke-save-to-library" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent-color);">
-                    <label for="poke-save-to-library" style="font-size:12px;color:var(--text-secondary);cursor:pointer;">保存到拍一拍库</label>
-                </div>
                 <button class="modal-btn modal-btn-secondary" id="cancel-poke">取消</button><button class="modal-btn modal-btn-primary" id="send-poke">发送</button>
             </div>
         </div>
@@ -1197,77 +1180,11 @@
                                 <input type="range" min="0" max="100" step="5" value="15" class="font-size-slider" id="sound-volume-slider">
                                 <span class="cs-slider-val" id="sound-volume-value">15%</span>
                             </div>
-                            <div style="padding-top:10px;display:flex;flex-direction:column;gap:12px;">
-                                <div>
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">我发出的消息音效</div>
-                                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-                                        <select id="sound-my-send-preset" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);">
-                                            <option value="mute">无音效</option>
-                                            <option value="kakaotalk">kakaotalk</option>
-                                            <option value="tone_default">内置：默认</option>
-                                            <option value="tone_soft">内置：柔和</option>
-                                            <option value="tone_low">内置：低沉</option>
-                                            <option value="tone_warm">内置：厚暖</option>
-                                            <option value="tone_dark">内置：暗夜</option>
-                                            <option value="tone_haze">内置：雾感</option>
-                                        </select>
-                                        <button id="test-sound-my-send-btn" class="modal-btn modal-btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap;"><i class="fas fa-play"></i> 试听</button>
-                                    </div>
-                                    <input type="text" id="sound-my-send-custom-url" placeholder="可填自定义URL（留空用内置预设）" style="width:100%;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;">
-                                </div>
-
-                                <div>
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">对方发来的消息音效</div>
-                                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-                                        <select id="sound-partner-message-preset" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);">
-                                            <option value="mute">无音效</option>
-                                            <option value="kakaotalk">kakaotalk</option>
-                                            <option value="tone_default">内置：默认</option>
-                                            <option value="tone_soft">内置：柔和</option>
-                                            <option value="tone_low">内置：低沉</option>
-                                            <option value="tone_warm">内置：厚暖</option>
-                                            <option value="tone_dark">内置：暗夜</option>
-                                            <option value="tone_haze">内置：雾感</option>
-                                        </select>
-                                        <button id="test-sound-partner-message-btn" class="modal-btn modal-btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap;"><i class="fas fa-play"></i> 试听</button>
-                                    </div>
-                                    <input type="text" id="sound-partner-message-custom-url" placeholder="可填自定义URL（留空用内置预设）" style="width:100%;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;">
-                                </div>
-
-                                <div>
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">我拍一拍音效</div>
-                                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-                                        <select id="sound-my-poke-preset" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);">
-                                            <option value="mute">无音效</option>
-                                            <option value="kakaotalk">kakaotalk</option>
-                                            <option value="tone_default">内置：默认</option>
-                                            <option value="tone_soft">内置：柔和</option>
-                                            <option value="tone_low">内置：低沉</option>
-                                            <option value="tone_warm">内置：厚暖</option>
-                                            <option value="tone_dark">内置：暗夜</option>
-                                            <option value="tone_haze">内置：雾感</option>
-                                        </select>
-                                        <button id="test-sound-my-poke-btn" class="modal-btn modal-btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap;"><i class="fas fa-play"></i> 试听</button>
-                                    </div>
-                                    <input type="text" id="sound-my-poke-custom-url" placeholder="可填自定义URL（留空用内置预设）" style="width:100%;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;">
-                                </div>
-
-                                <div>
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">对方拍一拍音效</div>
-                                    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-                                        <select id="sound-partner-poke-preset" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;font-family:var(--font-family);">
-                                            <option value="mute">无音效</option>
-                                            <option value="kakaotalk">kakaotalk</option>
-                                            <option value="tone_default">内置：默认</option>
-                                            <option value="tone_soft">内置：柔和</option>
-                                            <option value="tone_low">内置：低沉</option>
-                                            <option value="tone_warm">内置：厚暖</option>
-                                            <option value="tone_dark">内置：暗夜</option>
-                                            <option value="tone_haze">内置：雾感</option>
-                                        </select>
-                                        <button id="test-sound-partner-poke-btn" class="modal-btn modal-btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap;"><i class="fas fa-play"></i> 试听</button>
-                                    </div>
-                                    <input type="text" id="sound-partner-poke-custom-url" placeholder="可填自定义URL（留空用内置预设）" style="width:100%;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;">
+                            <div style="padding-top:10px;">
+                                <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">自定义音效 URL（留空使用内置音效）</div>
+                                <div style="display:flex;gap:6px;align-items:center;">
+                                    <input type="text" id="custom-sound-url-input" placeholder="https://example.com/sound.mp3" style="flex:1;padding:7px 10px;border:1px solid var(--border-color);border-radius:8px;font-size:12px;background:var(--primary-bg);color:var(--text-primary);outline:none;">
+                                    <button id="test-sound-btn" class="modal-btn modal-btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap;"><i class="fas fa-play"></i> 试听</button>
                                 </div>
                             </div>
                         </div>
@@ -1396,6 +1313,7 @@
 
     <div class="modal" id="data-modal">
         <div class="modal-content">
+            <!-- data.js v10 将注入新版网格布局 -->
         </div>
     </div>
 
@@ -1573,9 +1491,6 @@
                 <button class="view-switch-btn" id="btn-view-stats">
                     <i class="fas fa-chart-pie"></i> 统计
                 </button>
-                <button class="view-switch-btn" id="btn-view-trash">
-                    <i class="fas fa-recycle"></i> 回收站
-                </button>
             </div>
         </div>
         <div id="mood-calendar-view" class="mood-view-section">
@@ -1594,15 +1509,8 @@
             <div id="mood-stats-container" class="mood-stats-card" style="border:none; box-shadow:none; padding:0; background:transparent;">
             </div>
         </div>
-
-        <div id="mood-trash-view" class="mood-view-section hidden-view">
-            <div id="mood-trash-list" style="padding:0 14px;"></div>
-        </div>
     
         <div class="modal-buttons">
-            <button class="modal-btn modal-btn-secondary" id="mood-export-btn" style="flex:1;">导出</button>
-            <button class="modal-btn modal-btn-secondary" id="mood-import-btn" style="flex:1;">导入</button>
-            <input type="file" id="mood-import-file-input" accept="application/json" style="display:none;">
             <button class="modal-btn modal-btn-secondary" id="close-mood">关闭</button>
         </div>
        </div>
@@ -1932,13 +1840,6 @@
                     <div class="ann-header-milestones" id="ann-header-milestones"></div>
                 </div>
             </div>
-            <div class="ann-data-tabs" id="ann-data-tabs" style="display:flex;gap:8px;align-items:center;padding:10px 14px 6px;border-bottom:1px solid var(--border-color);background:linear-gradient(180deg, rgba(var(--accent-color-rgb),0.05), transparent);">
-                <button id="ann-tab-card" onclick="window.switchAnnDataTab && window.switchAnnDataTab('card')" class="ann-tab-btn" style="flex:1;padding:8px 10px;border-radius:12px;border:1px solid var(--border-color);background:var(--secondary-bg);color:var(--text-secondary);cursor:pointer;font-size:12px;font-family:var(--font-family);">卡片</button>
-                <button id="ann-tab-data" onclick="window.switchAnnDataTab && window.switchAnnDataTab('data')" class="ann-tab-btn" style="flex:1;padding:8px 10px;border-radius:12px;border:none;background:rgba(var(--accent-color-rgb),0.16);color:var(--accent-color);cursor:pointer;font-size:12px;font-family:var(--font-family);">数据</button>
-            </div>
-            <div id="ann-data-panel" style="display:none;padding:10px 14px 0;overflow:hidden;">
-                <div id="ann-data-milestones" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
-            </div>
             <div id="ann-card-toolbar" style="display:none; padding:6px 14px 2px; align-items:center; justify-content:flex-end; gap:8px;">
                 <button class="ann-header-upload-btn" onclick="document.getElementById('ann-header-bg-input').click()" title="更换背景图" style="position:static; background:rgba(var(--accent-color-rgb),0.1); border-color:rgba(var(--accent-color-rgb),0.3); color:var(--accent-color);">
                     <i class="fas fa-image"></i> 更换封面
@@ -2198,64 +2099,9 @@
 </div>
 
 <div id="dg-editor-modal" style="display:none;"></div>
-    <div class="modal" id="supabase-guide-modal">
-        <div class="modal-content">
-            <div class="modal-title">
-                <i class="fas fa-cloud"></i><span>云同步设置教程</span>
-            </div>
-            <div class="modal-body" style="max-height: 60vh; overflow-y: auto; line-height: 1.8; font-size: 14px; color: var(--text-secondary); padding: 0 10px 10px;">
-                <p>请严格按照以下步骤设置云同步，全程大约需要 5-10 分钟。</p>
-                <hr style="border: none; border-top: 1px dashed var(--border-color); margin: 15px 0;">
-                
-                <h4>第一步：注册并创建项目</h4>
-                <p>点击云端备份同步最右侧的箭头，打开supabase网站，使用gihub账户或者邮箱注册一个免费账户，注册完跳转到创建组织/是否个人，直接点击create跳过。</p>
-                <p>刚注册会直接弹出一个project的创建界面，Project name自己随便取个名字，Database password记住写个复杂的密码，而且要记住，1. Enable Data API选：开启。2. Enable automatic RLS开启，其他不用管，点击create new project。</p>
-                
-                <hr style="border: none; border-top: 1px dashed var(--border-color); margin: 15px 0;">
-
-                <h4>第二步：运行 SQL 代码</h4>
-                <p>刚创建完 Project 后，不要立刻操作。等待五分钟，status显示healthy后，在最左侧找到SQL Editor点击，将下一个弹窗提供的SQL代码完整复制到右边的大框里，点击绿色的run按钮，返回Succecc.No rows returned.</p>
-                <p><strong>需要复制的 SQL 代码:</strong></p>
-                <textarea id="supabase-sql-code-display" readonly style="width: 100%; height: 120px; font-family: monospace; font-size: 11px; background: var(--primary-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; resize: none;"></textarea>
-                
-                <hr style="border: none; border-top: 1px dashed var(--border-color); margin: 15px 0;">
-
-                <h4>第三步：获取并填写配置信息</h4>
-                <p>完成前两步后，关闭本教程，再次点击“云端备份同步”那一行，会弹出输入框让你填写配置信息。</p>
-            </div>
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-secondary" id="close-supabase-guide">关闭</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal" id="supabase-config-modal">
-        <div class="modal-content">
-            <div class="modal-title">
-                <i class="fas fa-cogs"></i><span>云同步配置</span>
-            </div>
-            <div class="modal-body" style="padding: 10px;">
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 5px;">Project URL</label>
-                    <input type="text" class="modal-input" id="supabase-url-input" placeholder="请在 Integrations > Data API > API URL 复制">
-                    <p style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">请在界面最左侧的 Integrations → Data API → API URL，点击copy，返回填写此url</p>
-                </div>
-                <div class="form-group">
-                    <label style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 5px;">Publishable Key (anon)</label>
-                    <input type="text" class="modal-input" id="supabase-key-input" placeholder="请在 Project settings > API > API Keys 复制">
-                     <p style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">请在界面最左侧的Project settings → Settings → API Keys → Publishable key，点击copy，返回填写此url</p>
-                </div>
-            </div>
-            <div class="modal-buttons">
-                <button class="modal-btn modal-btn-secondary" id="cancel-supabase-config">取消</button>
-                <button class="modal-btn modal-btn-primary" id="save-supabase-config">保存</button>
-            </div>
-        </div>
-    </div>
     <!-- == 核心层 == -->
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
-    <script src="js/backup-engine.js"></script>
     <script src="js/state.js"></script>
     <script src="js/core.js"></script>
 
@@ -2268,10 +2114,12 @@
     <script src="js/features/call.js"></script>
 
     <!-- == 合并模块 == -->
-    <script src="js/games.js"></script> 
-    <script src="js/features.js"></script> 
-    <script src="js/data.js"></script>
-    <script src="js/onboarding.js"></script> 
+    <script src="js/games.js"></script>       <!-- fortune + decision -->
+    <script src="js/features.js"></script>    <!-- features-extra + combo-menu + daily-greeting -->
+    <script src="js/data.js"></script>        <!-- data-modal + notifications -->
+    <script src="js/onboarding.js"></script>  <!-- splash + tour -->
+
+    <!-- == 入口 == -->
     <script src="js/listeners.js"></script>
     <script src="js/app.js"></script>
 </body>
