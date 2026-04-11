@@ -1,3 +1,8 @@
+/**
+ * listeners.js - Event Listeners & Initialization
+ * 事件监听器与初始化函数
+ */
+
 function setupEventListeners() {
     try {
         initCoreListeners();
@@ -169,29 +174,9 @@ if (target.classList.contains('delete-btn')) {
             });
             DOMElements.pokeModal.save.addEventListener('click', () => {
                 let pokeText = DOMElements.pokeModal.input.value.trim() || `${settings.myName} 拍了拍 ${settings.partnerName}`;
-                if (typeof window._sanitizePokeTextForDisplay === 'function') {
-                    pokeText = window._sanitizePokeTextForDisplay(pokeText);
-                }
-                const pokeSaveChecked = document.getElementById('poke-save-to-library');
-                const shouldSaveToLibrary = pokeSaveChecked ? !!pokeSaveChecked.checked : false;
                 addMessage({
                     id: Date.now(), text: _formatPokeText(pokeText), timestamp: new Date(), type: 'system'
                 });
-                if (typeof playSound === 'function') playSound('poke');
-
-                if (shouldSaveToLibrary) {
-                    try {
-                        if (!Array.isArray(customPokes)) customPokes = [];
-                        const exists = customPokes.some(r => String(r) === String(pokeText));
-                        if (!exists) {
-                            customPokes.unshift(pokeText);
-                            if (typeof throttledSaveData === 'function') throttledSaveData();
-                            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
-                        }
-                    } catch (e) {
-                        console.warn('拍一拍保存到库失败:', e);
-                    }
-                }
                 hideModal(DOMElements.pokeModal.modal);
                 DOMElements.pokeModal.input.value = '';
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
@@ -444,28 +429,8 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
     const svSlider = document.getElementById('sound-volume-slider');
     const svVal = document.getElementById('sound-volume-value');
     if (svSlider) { svSlider.value = Math.round((settings.soundVolume || 0.15) * 100); if (svVal) svVal.textContent = svSlider.value + '%'; }
-    const legacyCustom = (settings.customSoundUrl || '').trim();
-
-    const setSelect = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.value = val || 'tone_low';
-    };
-    const setInput = (id, val) => {
-        const el = document.getElementById(id);
-        if (el) el.value = val || '';
-    };
-
-    setSelect('sound-my-send-preset', settings.mySendSoundPreset || 'tone_low');
-    setInput('sound-my-send-custom-url', (settings.mySendCustomSoundUrl || '').trim() || legacyCustom);
-
-    setSelect('sound-partner-message-preset', settings.partnerMessageSoundPreset || 'tone_low');
-    setInput('sound-partner-message-custom-url', (settings.partnerMessageCustomSoundUrl || '').trim() || legacyCustom);
-
-    setSelect('sound-my-poke-preset', settings.myPokeSoundPreset || 'tone_low');
-    setInput('sound-my-poke-custom-url', (settings.myPokeCustomSoundUrl || '').trim() || legacyCustom);
-
-    setSelect('sound-partner-poke-preset', settings.partnerPokeSoundPreset || 'tone_low');
-    setInput('sound-partner-poke-custom-url', (settings.partnerPokeCustomSoundUrl || '').trim() || legacyCustom);
+    const csi = document.getElementById('custom-sound-url-input');
+    if (csi) csi.value = settings.customSoundUrl || '';
     document.querySelectorAll('.time-fmt-opt').forEach(opt => {
         opt.classList.toggle('active', opt.dataset.fmt === (settings.timeFormat || 'HH:mm'));
     });
@@ -657,6 +622,7 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                 });
             }
 
+            // 全局主题 CSS
             const globalCssTextarea = document.getElementById('custom-global-css');
             const applyGlobalCssBtn = document.getElementById('apply-global-css-btn');
             const resetGlobalCssBtn = document.getElementById('reset-global-css-btn');
@@ -1084,48 +1050,18 @@ if (_chatSettingsEl) _chatSettingsEl.addEventListener('click', () => {
                 });
                 soundVolSlider.addEventListener('change', throttledSaveData);
             }
-
-            const bindPresetSelect = (selectId, settingsKey) => {
-                const el = document.getElementById(selectId);
-                if (!el) return;
-                el.value = settings[settingsKey] || 'tone_default';
-                el.addEventListener('change', () => {
-                    settings[settingsKey] = el.value || 'tone_default';
+            const customSoundInput = document.getElementById('custom-sound-url-input');
+            if (customSoundInput) {
+                customSoundInput.value = settings.customSoundUrl || '';
+                customSoundInput.addEventListener('change', () => {
+                    settings.customSoundUrl = customSoundInput.value.trim();
                     throttledSaveData();
                 });
-            };
-
-            bindPresetSelect('sound-my-send-preset', 'mySendSoundPreset');
-            bindPresetSelect('sound-partner-message-preset', 'partnerMessageSoundPreset');
-            bindPresetSelect('sound-my-poke-preset', 'myPokeSoundPreset');
-            bindPresetSelect('sound-partner-poke-preset', 'partnerPokeSoundPreset');
-
-            const bindCustomUrlInput = (inputId, settingsKey) => {
-                const el = document.getElementById(inputId);
-                if (!el) return;
-                el.addEventListener('change', () => {
-                    settings[settingsKey] = el.value.trim();
-                    throttledSaveData();
-                });
-            };
-
-            bindCustomUrlInput('sound-my-send-custom-url', 'mySendCustomSoundUrl');
-            bindCustomUrlInput('sound-partner-message-custom-url', 'partnerMessageCustomSoundUrl');
-            bindCustomUrlInput('sound-my-poke-custom-url', 'myPokeCustomSoundUrl');
-            bindCustomUrlInput('sound-partner-poke-custom-url', 'partnerPokeCustomSoundUrl');
-
-            const btnMySend = document.getElementById('test-sound-my-send-btn');
-            if (btnMySend) btnMySend.addEventListener('click', () => playSound('my_send'));
-
-            const btnPartnerMsg = document.getElementById('test-sound-partner-message-btn');
-            if (btnPartnerMsg) btnPartnerMsg.addEventListener('click', () => playSound('partner_message'));
-
-            const btnMyPoke = document.getElementById('test-sound-my-poke-btn');
-            if (btnMyPoke) btnMyPoke.addEventListener('click', () => playSound('my_poke'));
-
-            const btnPartnerPoke = document.getElementById('test-sound-partner-poke-btn');
-            if (btnPartnerPoke) btnPartnerPoke.addEventListener('click', () => playSound('partner_poke'));
-
+            }
+            const testSoundBtn = document.getElementById('test-sound-btn');
+            if (testSoundBtn) {
+                testSoundBtn.addEventListener('click', () => { playSound('message'); });
+            }
             document.querySelectorAll('.time-fmt-opt').forEach(opt => {
                 opt.classList.toggle('active', opt.dataset.fmt === (settings.timeFormat || 'HH:mm'));
                 opt.addEventListener('click', () => {
@@ -1420,8 +1356,9 @@ if (_cancelEnvEl) _cancelEnvEl.addEventListener('click', () => {
         DOMElements.sessionModal.managerBtn.addEventListener('click', () => {
             renderSessionList(); showModal(DOMElements.sessionModal.modal);
         });
-        DOMElements.sessionModal.createBtn.addEventListener('click', async () => {
-            await createNewSession(false);
+        DOMElements.sessionModal.createBtn.addEventListener('click', () => {
+            const newId = createNewSession(false);
+
             renderSessionList();
             showNotification('新会话已创建', 'success');
         });
@@ -1452,17 +1389,9 @@ if (_cancelEnvEl) _cancelEnvEl.addEventListener('click', () => {
                     sessionList = sessionList.filter(s => s.id !== sessionId);
 localforage.setItem(`${APP_PREFIX}sessionList`, sessionList);
 
-// 同时清除 localStorage 和 localforage 中该会话的所有键
 Object.keys(localStorage).forEach(key => {
     if (key.startsWith(`${APP_PREFIX}${sessionId}_`)) safeRemoveItem(key);
 });
-localforage.keys().then(keys => {
-    keys.forEach(key => {
-        if (key.startsWith(`${APP_PREFIX}${sessionId}_`)) {
-            localforage.removeItem(key).catch(() => {});
-        }
-    });
-}).catch(() => {});
 
 if (sessionId === currentSessionId) {
     const newCurrentId = sessionList[0].id;
@@ -1900,12 +1829,9 @@ const savedCover = safeGetItem(APP_PREFIX + 'playerCover');
 
             const closeOpt = () => overlay.remove();
             overlay.addEventListener('click', (ev) => { if(ev.target === overlay) closeOpt(); });
-            const plOptCancelBtn = document.getElementById('_pl_opt_cancel');
-            const plOptExportBtn = document.getElementById('_pl_opt_export');
-            const plOptImportBtn = document.getElementById('_pl_opt_import');
-            if (plOptCancelBtn) plOptCancelBtn.onclick = closeOpt;
+            document.getElementById('_pl_opt_cancel').onclick = closeOpt;
 
-            if (plOptExportBtn) plOptExportBtn.onclick = () => {
+            document.getElementById('_pl_opt_export').onclick = () => {
                 closeOpt();
                 if (songs.length === 0) {
                     showNotification('歌单为空，无法导出', 'warning');
@@ -1923,7 +1849,7 @@ const savedCover = safeGetItem(APP_PREFIX + 'playerCover');
                 showNotification('歌单导出成功', 'success');
             };
 
-            if (plOptImportBtn) plOptImportBtn.onclick = () => {
+            document.getElementById('_pl_opt_import').onclick = () => {
                 closeOpt();
                 const input = header.querySelector('#pl-import-input');
                 if (input) input.click();
@@ -2209,13 +2135,37 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
     }
 };
 
+        // getRandomItem is defined globally in utils.js
+
+
+
         function initCoreListeners() {
+
 
             DOMElements.chatContainer.addEventListener('scroll', () => {
                 const container = DOMElements.chatContainer;
-                if (!container) return;
+
+
                 if (container.scrollTop < 50 && !isLoadingHistory && messages.length > displayedMessageCount) {
-                    if (typeof loadMoreHistory === 'function') loadMoreHistory();
+                    isLoadingHistory = true;
+
+
+                    const loader = document.getElementById('history-loader');
+                    if (loader) loader.classList.add('visible');
+
+
+                    setTimeout(() => {
+
+                        displayedMessageCount += HISTORY_BATCH_SIZE;
+
+
+                        renderMessages(true);
+
+
+                        if (loader) loader.classList.remove('visible');
+                        isLoadingHistory = false;
+                    },
+                        600);
                 }
             });
 
@@ -2481,6 +2431,7 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
 
 function _applyCollapseState(on) {
     document.body.classList.toggle('bottom-collapse-mode', on);
+    // Sync cs-panel-display toggle pill
     const csToggle = document.getElementById('bottom-collapse-cs-toggle');
     if (csToggle) csToggle.classList.toggle('active', on);
     if (!on) {

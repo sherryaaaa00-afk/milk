@@ -1,3 +1,12 @@
+/**
+ * games.js - 小游戏 & 随机决策
+ * 合并自：fortune.js + decision.js
+ *
+ * 包含：
+ *  1. 塔罗/灵摆/Lenormand 占卜
+ *  2. 聊天统计
+ *  3. 命运转盘与抛硬币
+ */
 function renderStatsContent() {
             const statsContent = DOMElements.statsModal.content;
 
@@ -800,6 +809,11 @@ document.addEventListener('click', function(e) {
     }
 });
 
+
+/**
+ * renderFavorites - 渲染收藏夹列表
+ * 显示所有已收藏的消息
+ */
 function renderFavorites() {
     const list = document.getElementById('favorites-list');
     if (!list) return;
@@ -829,6 +843,7 @@ function renderFavorites() {
         const content = msg.text
             ? msg.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')
             : (msg.image ? `<img src="${msg.image}" style="max-width:100%;max-height:180px;border-radius:8px;display:block;margin-top:4px;cursor:pointer;" onclick="if(typeof viewImage==='function')viewImage('${msg.image.replace(/'/g,'\\\'')}')" loading="lazy">` : '');
+        // Build avatar HTML
         const avatarEl = isUser
             ? (typeof DOMElements !== 'undefined' ? DOMElements.me.avatar : null)
             : (typeof DOMElements !== 'undefined' ? DOMElements.partner.avatar : null);
@@ -860,6 +875,7 @@ function renderFavorites() {
             </div>`;
     }).join('');
 
+    // Bind unfavorite buttons
     list.querySelectorAll('.fav-remove-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -876,6 +892,9 @@ function renderFavorites() {
 }
 window.renderFavorites = renderFavorites;
 
+/**
+ * _runMsgSearch - 消息搜索，显示头像
+ */
 window._runMsgSearch = function() {
     const input = document.getElementById('msg-search-input');
     const dateFrom = document.getElementById('msg-search-date-from');
@@ -899,8 +918,8 @@ window._runMsgSearch = function() {
         if (from && ts && ts < from) return false;
         if (to && ts && ts > to) return false;
         if (q && m.text && m.text.toLowerCase().includes(q)) return true;
-        if (q && !m.text && m.image) return false; 
-        return !q; 
+        if (q && !m.text && m.image) return false; // image-only, no text
+        return !q; // date-only filter
     });
 
     if (results.length === 0) {
@@ -950,6 +969,14 @@ window._runMsgSearch = function() {
         </div>`;
     }).join('') + (results.length > 100 ? `<div style="text-align:center;padding:10px;font-size:12px;color:var(--text-secondary);">仅显示前100条，共找到 ${results.length} 条</div>` : '');
 };
+
+/* ========================================================
+   decision.js - 命运转盘 & 抛硬币
+   ======================================================== */
+/**
+ * features/decision.js - 抉择模块 Decision & Picker
+ * 命运转盘与随机选择器
+ */
 
 let wheelOptions = ["是", "否", "再想一想", "听你的"];
 let wheelResultText = "";
@@ -1161,6 +1188,10 @@ function doPick() {
     flash();
 }
 
+/**
+ * handleCoinToss - 抛硬币入口
+ * 显示抛硬币覆盖层并开始动画
+ */
 function handleCoinToss() {
     const overlay = DOMElements.coinTossOverlay;
     if (!overlay) return;
@@ -1172,17 +1203,23 @@ function handleCoinToss() {
     if (sendBtn) sendBtn.style.display = 'none';
     const retryBtn = document.getElementById('retry-coin-toss');
     if (retryBtn) retryBtn.style.display = 'none';
+    // Clear any previously locked transform
     if (DOMElements.animatedCoin) DOMElements.animatedCoin.style.transform = '';
     startCoinFlipAnimation();
 }
 window.handleCoinToss = handleCoinToss;
 
+/**
+ * startCoinFlipAnimation - 执行硬币翻转动画并显示结果
+ * 修复：动画结束后硬币朝向与结果文字严格同步
+ */
 function startCoinFlipAnimation() {
     const coin = DOMElements.animatedCoin;
     const resultText = DOMElements.coinResultText;
     const overlay = DOMElements.coinTossOverlay;
     if (!coin || !overlay) return;
 
+    // Reset
     overlay.classList.remove('finished');
     if (resultText) resultText.textContent = '';
     const sendBtn = DOMElements.sendCoinResult;
@@ -1190,15 +1227,24 @@ function startCoinFlipAnimation() {
     const retryBtn = document.getElementById('retry-coin-toss');
     if (retryBtn) retryBtn.style.display = 'none';
 
+    // Decide outcome FIRST, then build animation to match
     const isHeads = Math.random() < 0.5;
     const result = isHeads ? '正面 ☀️' : '反面 🌙';
     lastCoinResult = result;
 
+    // Remove all animation classes and force reflow
     coin.classList.remove('flipping-heads', 'flipping-tails', 'coin-show-front', 'coin-show-back');
     void coin.offsetWidth;
+
+    // Add the correct flip animation
+    // flipping-heads ends at rotateY(2160deg) = 0 mod 360 → front face visible
+    // flipping-tails ends at rotateY(2340deg) = 180 mod 360 → back face visible
     coin.classList.add(isHeads ? 'flipping-heads' : 'flipping-tails');
+
+    // Animation duration is 3s; wait 3s + small buffer then show result
     setTimeout(() => {
         coin.classList.remove('flipping-heads', 'flipping-tails');
+        // Lock final rotation so the coin stays on the correct side
         coin.style.transform = isHeads ? 'rotateY(0deg)' : 'rotateY(180deg)';
         if (resultText) resultText.textContent = result;
         overlay.classList.add('finished');
@@ -1400,7 +1446,16 @@ function initComboMenu() {
     }
 }
 
+/* ══════════════════════════════════════════════════════════════
+   词云生成 renderWordCloud v4 — 极简编辑风
+   设计原则：单色系 / 强字号对比 / 零特效 / 纯净排版
+   ══════════════════════════════════════════════════════════════ */
 (function() {
+
+
+    /* ─────────────────────────────────────────
+       停用词：过滤聊天中无意义的高频词
+    ───────────────────────────────────────── */
     var STOP_WORDS = new Set([
         '的','了','是','我','你','他','她','它','们','这','那','有','在','就','也','都',
         '和','与','或','但','不','没','很','太','更','最','已','被','让','把','对','从',
@@ -1425,35 +1480,13 @@ function initComboMenu() {
             .toLowerCase();
         var words = {};
         var cn = text.replace(/[a-z ]/g, '');
-        // 使用非重叠分词：优先提取长词，避免"我想你"同时产生"我想"和"想你"
-        // 策略：对每个起点只取一次最长匹配（4>3>2），跳过已覆盖字符
-        var covered = new Array(cn.length).fill(false);
-        // 先扫一遍提取4字词
-        for (var i = 0; i + 4 <= cn.length; i++) {
-            var w4 = cn.slice(i, i + 4);
-            if (!STOP_WORDS.has(w4)) {
-                words[w4] = (words[w4] || 0) + 2.4;
-                covered[i] = covered[i+1] = covered[i+2] = covered[i+3] = true;
-                i += 3; // 跳过已覆盖字符
+        for (var i = 0; i < cn.length; i++) {
+            for (var l = 2; l <= 4 && i + l <= cn.length; l++) {
+                var w = cn.slice(i, i + l);
+                if (!STOP_WORDS.has(w))
+                    words[w] = (words[w] || 0) + (l === 2 ? 1 : l === 3 ? 1.8 : 2.4);
             }
         }
-        // 再扫3字词（跳过已覆盖位置）
-        covered = new Array(cn.length).fill(false); // 重置，用于3字
-        for (var j = 0; j + 3 <= cn.length; j++) {
-            var w3 = cn.slice(j, j + 3);
-            if (!STOP_WORDS.has(w3)) {
-                words[w3] = (words[w3] || 0) + 1.8;
-                j += 2;
-            }
-        }
-        // 2字词：步长2，非重叠，不与已有词重复计数
-        for (var k = 0; k + 2 <= cn.length; k += 2) {
-            var w2 = cn.slice(k, k + 2);
-            if (!STOP_WORDS.has(w2)) {
-                words[w2] = (words[w2] || 0) + 1;
-            }
-        }
-        // 英文单词（长度≥3）
         (text.match(/[a-z]{3,}/g) || []).forEach(function(w) {
             if (!STOP_WORDS.has(w)) words[w] = (words[w] || 0) + 1;
         });
@@ -1490,6 +1523,14 @@ function initComboMenu() {
         var n = parseInt(hex, 16);
         return [(n>>16)&255, (n>>8)&255, n&255];
     }
+
+    /* ════════════════════════════════════════════════
+       drawWordCloud — 极简单色编辑风
+       · 只用 accent 色，透明度表达层次
+       · 0° 或 90° 两种角度，无斜角
+       · 无任何阴影/模糊/渐变特效
+       · 字号对数映射，强化视觉对比
+    ════════════════════════════════════════════════ */
     function drawWordCloud(canvas, words) {
         var ctx   = canvas.getContext('2d');
         var dpr   = window.devicePixelRatio || 1;
@@ -1610,6 +1651,9 @@ function initComboMenu() {
         });
     }
 
+    /* ════════════════════════════════════════════════
+       主入口
+    ════════════════════════════════════════════════ */
     window.renderWordCloud = function() {
         var container = document.getElementById('wordcloud-container');
         if (!container) return;
@@ -1622,8 +1666,8 @@ function initComboMenu() {
         var pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '对方';
         var mName = (typeof settings !== 'undefined' && settings.myName)      ? settings.myName      : '我';
 
-        var partnerMsgs = messages.filter(function(m) { return m.sender !== 'user' && m.text && m.type !== 'system' && m.type !== 'call-event'; });
-        var myMsgs      = messages.filter(function(m) { return m.sender === 'user' && m.text && m.type !== 'system' && m.type !== 'call-event'; });
+        var partnerMsgs = messages.filter(function(m) { return m.sender !== 'user' && m.text && m.type !== 'system'; });
+        var myMsgs      = messages.filter(function(m) { return m.sender === 'user' && m.text && m.type !== 'system'; });
 
         var pFreq = {}, mFreq = {};
         partnerMsgs.forEach(function(m) { pFreq = mergeFreq(pFreq, tokenize(m.text)); });

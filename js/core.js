@@ -1,4 +1,7 @@
-/*核心应用逻辑：数据加载保存、消息渲染、会话管理等*/
+/**
+ * core.js - Core Application Logic
+ * 核心应用逻辑：数据加载/保存、消息渲染、会话管理等
+ */
 
         function clearAllAppData() {
     const overlay = document.createElement('div');
@@ -28,32 +31,19 @@
 
     function closeDialog() { overlay.remove(); }
     overlay.addEventListener('click', e => { if (e.target === overlay) closeDialog(); });
-    const _resetCancelBtn = document.getElementById('_reset_cancel');
-    const _resetCurrentBtn = document.getElementById('_reset_current');
-    const _resetAllBtn = document.getElementById('_reset_all');
+    document.getElementById('_reset_cancel').onclick = closeDialog;
 
-    if (_resetCancelBtn) _resetCancelBtn.onclick = closeDialog;
-
-    if (_resetCurrentBtn) _resetCurrentBtn.onclick = () => {
+    document.getElementById('_reset_current').onclick = () => {
         closeDialog();
         if (confirm('确定要清除当前会话的所有消息吗？此操作无法恢复！')) {
             messages = [];
-            window.messages = messages; // 双保险：同步 window 属性
-            displayedMessageCount = HISTORY_BATCH_SIZE;
-
-            // 立即清除 localStorage 备份，防止 _tryRecoverFromBackup 在 IndexedDB 写入前恢复旧消息
-            try { localStorage.removeItem('BACKUP_V1_critical'); } catch(e) {}
-            try { localStorage.removeItem('BACKUP_V1_timestamp'); } catch(e) {}
-
-            // 直接写入 IndexedDB（跳过 500ms 防抖），确保刷新后不恢复
-            localforage.setItem(getStorageKey('chatMessages'), []).catch(() => {});
-
+            throttledSaveData();
             renderMessages();
             showNotification('当前会话消息已清除', 'success');
         }
     };
 
-    if (_resetAllBtn) _resetAllBtn.onclick = () => {
+    document.getElementById('_reset_all').onclick = () => {
         closeDialog();
         if (confirm('【高危操作】确定要重置所有数据吗？此操作将清除所有本地数据且无法恢复！')) {
             window._skipBackup = true;
@@ -70,68 +60,6 @@
             });
         }
     };
-}
-
-function loadMoreHistory() {
-    const historyLoader = document.getElementById('history-loader');
-    const container = DOMElements && DOMElements.chatContainer;
-    const currentOldestMsgIndex = messages.length - displayedMessageCount;
-
-    if (!container) return;
-    if (isLoadingHistory) return;
-
-    if (currentOldestMsgIndex <= 0) {
-        if (historyLoader) historyLoader.style.display = 'none';
-        return;
-    }
-
-    isLoadingHistory = true;
-    if (historyLoader) historyLoader.style.display = 'flex';
-
-    const visibleWrappers = Array.from(container.querySelectorAll('.message-wrapper'));
-    const firstVisible = visibleWrappers.find(function(el) {
-        return el.offsetTop + el.offsetHeight >= container.scrollTop;
-    }) || visibleWrappers[0] || null;
-
-    const anchorId = firstVisible ? firstVisible.dataset.msgId : null;
-    const anchorTop = firstVisible ? firstVisible.getBoundingClientRect().top : 0;
-
-    const prevVisibility = container.style.visibility;
-    const prevOverflow = container.style.overflow;
-    const prevScrollBehavior = container.style.scrollBehavior;
-    const prevOpacity = container.style.opacity;
-
-    container.style.opacity = '0.015';
-    container.style.visibility = 'hidden';
-    container.style.overflow = 'hidden';
-    container.style.scrollBehavior = 'auto';
-
-    setTimeout(() => {
-        displayedMessageCount = Math.min(messages.length, displayedMessageCount + HISTORY_BATCH_SIZE);
-        renderMessages(true);
-
-        requestAnimationFrame(() => {
-            if (anchorId) {
-                const newAnchor = container.querySelector('[data-msg-id="' + anchorId + '"]');
-                if (newAnchor) {
-                    const newTop = newAnchor.getBoundingClientRect().top;
-                    container.scrollTop += (newTop - anchorTop);
-                }
-            }
-
-            requestAnimationFrame(() => {
-                container.style.opacity = prevOpacity || '';
-                container.style.visibility = prevVisibility || '';
-                container.style.overflow = prevOverflow || '';
-                container.style.scrollBehavior = prevScrollBehavior || '';
-
-                if (historyLoader) {
-                    historyLoader.style.display = (messages.length > displayedMessageCount) ? 'flex' : 'none';
-                }
-                isLoadingHistory = false;
-            });
-        });
-    }, 120);
 }
 
 
@@ -175,20 +103,9 @@ autoSendInterval: 5,
         readNoReplyChance: 0.2,
         timeFormat: 'HH:mm',
         customSoundUrl: '',
-        // 音效：两方分别可选（若对应 URL 为空则使用内置预设）
-        mySendSoundPreset: 'tone_low',
-        mySendCustomSoundUrl: '',
-        partnerMessageSoundPreset: 'tone_low',
-        partnerMessageCustomSoundUrl: '',
-        myPokeSoundPreset: 'tone_low',
-        myPokeCustomSoundUrl: '',
-        partnerPokeSoundPreset: 'tone_low',
-        partnerPokeCustomSoundUrl: '',
         soundVolume: 0.15,
         bottomCollapseMode: false,
-        emojiMixEnabled: true,
-        cloudAutoSyncEnabled: false,
-        cloudAutoSyncInterval: 10
+        emojiMixEnabled: true
             };
         }
 
@@ -284,7 +201,6 @@ autoSendInterval: 5,
 const loadData = async () => {
     try {
         settings = getDefaultSettings();
-
         
         const results = await Promise.allSettled([
             localforage.getItem(getStorageKey('chatSettings')),
@@ -333,6 +249,8 @@ const loadData = async () => {
 
         if (savedSettings) Object.assign(settings, savedSettings);
 
+        // Bug Fix: 合并 showPartnerNameInChat 的两次赋值，优先使用 settings 中的值（后加载、更新），
+        // 若 settings 中未定义再回退到独立存储的 savedShowNameConfig
         if (settings.showPartnerNameInChat !== undefined) {
             showPartnerNameInChat = settings.showPartnerNameInChat;
         } else if (savedShowNameConfig !== null) {
@@ -425,6 +343,7 @@ const loadData = async () => {
             manageAutoSendTimer(); 
             checkEnvelopeStatus(); 
             updateUI();
+            // Re-apply bubble CSS last so its specificity boost wins over updateUI's setProperty calls
             if (settings.customBubbleCss) {
                 try { applyCustomBubbleCss(settings.customBubbleCss); } catch(e) {}
             }
@@ -498,7 +417,6 @@ window.deleteAnniversaryItem = function(id) {
         throttledSaveData(); 
         renderAnniversariesList();
         showNotification('已删除', 'success');
-        if (typeof playSound === 'function') playSound('anniversary');
     }
 };
 
@@ -619,12 +537,10 @@ const saveData = async () => {
     }
 
     _backupCriticalData();
-    if (typeof window.markLocalBackupUpdated === 'function') {
-        window.markLocalBackupUpdated('local-save');
-    }
 };
 
         function initializeRandomUI() {
+            // getRandomItem is now a global function in utils.js
 
 
             document.querySelector('.header-motto').textContent = getRandomItem(CONSTANTS.HEADER_MOTTOS);
@@ -825,6 +741,8 @@ function manageAutoSendTimer() {
             DOMElements.themeToggle.innerHTML = settings.isDarkMode ? '<i class="fas fa-sun"></i>': '<i class="fas fa-moon"></i>';
             DOMElements.partner.name.textContent = settings.partnerName;
             DOMElements.me.name.textContent = settings.myName;
+            // Bug Fix #3: 不在 updateUI 里随机化状态（每次切换主题都会乱改状态）
+            // 状态变更只在 checkStatusChange() 和 loadData() 中发生
             DOMElements.partner.status.textContent = settings.partnerStatus || '在线';
             DOMElements.me.statusText.textContent = settings.myStatus;
             if (typeof window.updateDynamicNames === 'function') window.updateDynamicNames();
@@ -856,6 +774,7 @@ function manageAutoSendTimer() {
                 item.classList.toggle('active', item.dataset.bubbleStyle === settings.bubbleStyle);
             });
 
+            // Sync setting pill toggles
             const _pillSyncMap = {
                 '#reply-toggle': 'replyEnabled',
                 '#sound-toggle': 'soundEnabled',
@@ -904,11 +823,13 @@ function manageAutoSendTimer() {
                 return false;
             };
             if (!tryScroll()) {
+                // Message not rendered yet - check if it exists in messages array
                 const msgIndex = messages.findIndex(m => String(m.id) === String(id));
                 if (msgIndex === -1) {
                     if (typeof showNotification === 'function') showNotification('消息可能已被删除', 'info');
                     return;
                 }
+                // Load enough messages to include this one
                 const needed = messages.length - msgIndex;
                 if (needed > displayedMessageCount) {
                     displayedMessageCount = needed;
@@ -920,328 +841,263 @@ function manageAutoSendTimer() {
             }
         };
 
-function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
-    const fragment = new DocumentFragment();
-    const messageDate = new Date(msg.timestamp).toDateString();
-    const prevDate = prevMsg ? new Date(prevMsg.timestamp).toDateString() : null;
+        function renderMessages(preserveScroll = false) {
+            const container = DOMElements.chatContainer;
+            const totalMessages = messages.length;
 
-    if (messageDate !== prevDate) {
-        const dateDivider = document.createElement('div');
-        dateDivider.className = 'date-divider';
-        const today = new Date().toDateString();
-        const yesterday = new Date(Date.now() - 86400000).toDateString();
-        const displayDate = (messageDate === today) ? '今天' : (messageDate === yesterday) ? '昨天' : new Date(msg.timestamp).toLocaleDateString('zh-CN', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-        dateDivider.innerHTML = `<span>${displayDate}</span>`;
-        fragment.appendChild(dateDivider);
-        lastSenderRef.current = null;
-    }
+            const startIndex = Math.max(0, totalMessages - displayedMessageCount);
+            const msgsToRender = messages.slice(startIndex);
 
-    if (msg.type === 'system') {
-        const systemMsgDiv = document.createElement('div');
-        systemMsgDiv.className = 'system-message';
-        systemMsgDiv.innerHTML = msg.text;
-        fragment.appendChild(systemMsgDiv);
-        lastSenderRef.current = 'system';
-        return fragment;
-    }
+            DOMElements.emptyState.style.display = totalMessages === 0 ? 'flex': 'none';
 
-    if (msg.type === 'call-event') {
-        const callEvDiv = document.createElement('div');
-        callEvDiv.className = 'call-event-message';
-        callEvDiv.dataset.id = msg.id;
-        const icon = msg.callIcon || 'fa-video';
-        const isRejected = icon === 'fa-phone-slash';
-        const colorClass = isRejected ? 'call-event-pill--rejected' : 'call-event-pill--ended';
-        const detail = msg.callDetail ? `<span class="call-event-detail">${msg.callDetail}</span>` : '';
-        callEvDiv.innerHTML = `<div class="call-event-pill ${colorClass}"><i class="fas ${icon} call-event-icon"></i><span class="call-event-label">${msg.text.replace(/ · .*/, '')}</span>${detail}<button class="call-event-delete" title="删除" onclick="(function(btn){const id=btn.closest('[data-id]').dataset.id;const idx=messages.findIndex(m=>String(m.id)===String(id));if(idx>-1){messages.splice(idx,1);renderMessages();throttledSaveData();}})(this)"><i class="fas fa-times"></i></button></div>`;
-        fragment.appendChild(callEvDiv);
-        lastSenderRef.current = 'system';
-        return fragment;
-    }
+            const oldScrollHeight = container.scrollHeight;
+            
+            const prevRenderedCount = container._lastRenderedCount || 0;
+            const newMessageCount = msgsToRender.length - prevRenderedCount;
+            
+            container.innerHTML = '';
+            container._lastRenderedCount = msgsToRender.length;
 
-    let showTimestamp = true;
-    if (settings.timeFormat === 'off') {
-        showTimestamp = false;
-    } else if (nextMsg) {
-        const currentTs = new Date(msg.timestamp).getTime();
-        const nextTs = new Date(nextMsg.timestamp).getTime();
-        if (nextMsg.sender === msg.sender && nextMsg.type !== 'system' && (nextTs - currentTs < 60000)) {
-            showTimestamp = false;
-        }
-    }
+            const fragment = new DocumentFragment();
+            const spacer = document.createElement('div');
+            spacer.style.flex = '1';
+            fragment.appendChild(spacer);
+            let currentDate = '';
+            let lastSender = null;
 
-    let isLastInSenderGroup = true;
-    if (nextMsg) {
-        const currentTs = new Date(msg.timestamp).getTime();
-        const nextTs = new Date(nextMsg.timestamp).getTime();
-        if (nextMsg.sender === msg.sender && nextMsg.type !== 'system' && (nextTs - currentTs < 60000)) {
-            isLastInSenderGroup = false;
-        }
-    }
+            msgsToRender.forEach((msg, index) => {
+                const messageDate = new Date(msg.timestamp).toDateString();
+                if (messageDate !== currentDate) {
+                    currentDate = messageDate;
+                    const dateDivider = document.createElement('div');
+                    dateDivider.className = 'date-divider';
+                    const today = new Date().toDateString();
+                    const yesterday = new Date(Date.now() - 86400000).toDateString();
+                    const displayDate = (messageDate === today) ? '今天': (messageDate === yesterday) ? '昨天': new Date(msg.timestamp).toLocaleDateString('zh-CN', {
+                        year: 'numeric', month: 'long', day: 'numeric'
+                    });
+                    dateDivider.innerHTML = `<span>${displayDate}</span>`;
+                    fragment.appendChild(dateDivider);
+                    lastSender = null; 
+                }
 
-    const wrapper = document.createElement('div');
-    wrapper.className = `message-wrapper ${msg.sender === 'user' ? 'sent' : 'received'}`;
-    wrapper.dataset.id = msg.id;
-    wrapper.dataset.msgId = msg.id;
+                if (msg.type === 'system') {
+                    const systemMsgDiv = document.createElement('div');
+                    systemMsgDiv.className = 'system-message';
+                    systemMsgDiv.innerHTML = msg.text;
+                    fragment.appendChild(systemMsgDiv);
+                    lastSender = 'system';
+                    return;
+                }
 
-    const avatarDiv = document.createElement('div');
-    avatarDiv.className = 'message-avatar';
-    if (settings.inChatAvatarPosition === 'custom' && settings.inChatAvatarCustomOffset !== undefined) {
-        avatarDiv.style.marginTop = settings.inChatAvatarCustomOffset + 'px';
-    }
+                let showTimestamp = true;
+                if (settings.timeFormat === 'off') {
+                    showTimestamp = false;
+                } else if (index < msgsToRender.length - 1) {
+                    const nextMsg = msgsToRender[index + 1];
+                    const currentTs = new Date(msg.timestamp).getTime();
+                    const nextTs = new Date(nextMsg.timestamp).getTime();
+                    
+                    if (nextMsg.sender === msg.sender && 
+                        nextMsg.type !== 'system' && 
+                        (nextTs - currentTs < 60000)) {
+                        showTimestamp = false;
+                    }
+                }
 
-    const groupMember = (msg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(msg.id) : null;
+                let isLastInSenderGroup = true;
+                if (index < msgsToRender.length - 1) {
+                    const nextMsg = msgsToRender[index + 1];
+                    const currentTs = new Date(msg.timestamp).getTime();
+                    const nextTs = new Date(nextMsg.timestamp).getTime();
+                    if (nextMsg.sender === msg.sender &&
+                        nextMsg.type !== 'system' &&
+                        (nextTs - currentTs < 60000)) {
+                        isLastInSenderGroup = false;
+                    }
+                }
 
-    if (settings.inChatAvatarEnabled) {
-        const isSameSenderGroup = groupMember && lastSenderRef.current === 'group_' + (groupMember ? groupMember.name : '');
-        const isSameSenderNormal = !groupMember && msg.sender === lastSenderRef.current;
-        const shouldHide = !settings.alwaysShowAvatar && (isSameSenderGroup || isSameSenderNormal);
-        if (shouldHide) {
-            avatarDiv.classList.add('hidden');
-        } else if (groupMember) {
-            const groupAvatarShape = settings.partnerAvatarShape || 'circle';
-            ['circle', 'square', 'pentagon', 'heart'].forEach(s => avatarDiv.classList.remove('shape-' + s));
-            if (groupAvatarShape !== 'none') avatarDiv.classList.add('shape-' + groupAvatarShape);
-            if (groupMember.avatar) {
-                avatarDiv.innerHTML = `<img src="${groupMember.avatar}" style="width:100%;height:100%;object-fit:cover;">`;
-            } else {
-                const initials = (groupMember.name || '?').charAt(0).toUpperCase();
-                avatarDiv.innerHTML = `<div style="width:100%;height:100%;background:var(--accent-color);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;">${initials}</div>`;
-            }
-        } else {
-            const isUser = msg.sender === 'user';
-            const avatarElement = isUser ? DOMElements.me.avatar : DOMElements.partner.avatar;
-            const frameSettings = isUser ? settings.myAvatarFrame : settings.partnerAvatarFrame;
-            const avatarShape = isUser ? (settings.myAvatarShape || 'circle') : (settings.partnerAvatarShape || 'circle');
-            avatarDiv.innerHTML = avatarElement.innerHTML;
-            applyAvatarFrame(avatarDiv, frameSettings);
-            ['circle', 'square', 'pentagon', 'heart'].forEach(s => avatarDiv.classList.remove('shape-' + s));
-            if (avatarShape !== 'none') avatarDiv.classList.add('shape-' + avatarShape);
-        }
-    } else {
-        avatarDiv.style.display = 'none';
-    }
-    wrapper.appendChild(avatarDiv);
+                const wrapper = document.createElement('div');
+                wrapper.className = `message-wrapper ${msg.sender === 'user' ? 'sent': 'received'}`;
+                wrapper.dataset.id = msg.id;
+                wrapper.dataset.msgId = msg.id;
+                if (index < msgsToRender.length - Math.max(newMessageCount, 0)) {
+                    wrapper.style.animation = 'none';
+                    wrapper.style.opacity = '1';
+                }
+                
+                const avatarDiv = document.createElement('div');
+                avatarDiv.className = 'message-avatar';
+                if (settings.inChatAvatarPosition === 'custom' && settings.inChatAvatarCustomOffset !== undefined) {
+                    avatarDiv.style.marginTop = settings.inChatAvatarCustomOffset + 'px';
+                }
 
-    const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'message-content-wrapper';
+                const groupMember = (msg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(msg.id) : null;
 
-    if (groupMember && groupChatSettings.showName) {
-        const nameLabel = document.createElement('div');
-        nameLabel.className = 'group-sender-name';
-        nameLabel.textContent = groupMember.name;
-        const isSameSenderGroupForName = lastSenderRef.current === 'group_' + groupMember.name;
-        if (!isSameSenderGroupForName) contentWrapper.appendChild(nameLabel);
-    } else if (!groupMember && msg.sender !== 'user' && msg.sender !== null && (settings.showPartnerNameInChat || showPartnerNameInChat)) {
-        const isSameSenderForName = lastSenderRef.current === msg.sender;
-        if (!isSameSenderForName) {
-            const nameLabel = document.createElement('div');
-            nameLabel.className = 'group-sender-name';
-            nameLabel.textContent = settings.partnerName || msg.sender || '对方';
-            contentWrapper.appendChild(nameLabel);
-        }
-    }
+                if (settings.inChatAvatarEnabled) {
+                    const isSameSenderGroup = groupMember && lastSender === 'group_' + (groupMember ? groupMember.name : '');
+                    const isSameSenderNormal = !groupMember && msg.sender === lastSender;
+                    const shouldHide = !settings.alwaysShowAvatar && (isSameSenderGroup || isSameSenderNormal);
+                    if (shouldHide) {
+                        avatarDiv.classList.add('hidden');
+                    } else if (groupMember) {
+                        const groupAvatarShape = settings.partnerAvatarShape || 'circle';
+                        ['circle','square','pentagon','heart'].forEach(s => avatarDiv.classList.remove('shape-' + s));
+                        if (groupAvatarShape !== 'none') avatarDiv.classList.add('shape-' + groupAvatarShape);
+                        if (groupMember.avatar) {
+                            avatarDiv.innerHTML = `<img src="${groupMember.avatar}" style="width:100%;height:100%;object-fit:cover;">`;
+                        } else {
+                            const initials = (groupMember.name || '?').charAt(0).toUpperCase();
+                            avatarDiv.innerHTML = `<div style="width:100%;height:100%;background:var(--accent-color);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;">${initials}</div>`;
+                        }
+                    } else {
+                        const isUser = msg.sender === 'user';
+                        const avatarElement = isUser ? DOMElements.me.avatar : DOMElements.partner.avatar;
+                        const frameSettings = isUser ? settings.myAvatarFrame : settings.partnerAvatarFrame;
+                        const avatarShape = isUser ? (settings.myAvatarShape || 'circle') : (settings.partnerAvatarShape || 'circle');
+                        avatarDiv.innerHTML = avatarElement.innerHTML;
+                        applyAvatarFrame(avatarDiv, frameSettings);
+                        ['circle','square','pentagon','heart'].forEach(s => avatarDiv.classList.remove('shape-' + s));
+                        if (avatarShape !== 'none') avatarDiv.classList.add('shape-' + avatarShape);
+                    }
+                } else {
+                    avatarDiv.style.display = 'none';
+                }
+                wrapper.appendChild(avatarDiv);
+                
+                const contentWrapper = document.createElement('div');
+                contentWrapper.className = 'message-content-wrapper';
 
-    let messageHTML = '';
-    if (msg.replyTo) {
-        const repliedText = msg.replyTo.text || (msg.replyTo.image ? '🖼 图片' : '[消息]');
-        const repliedSender = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
-        messageHTML += `<div class="reply-indicator" data-reply-id="${msg.replyTo.id || ''}" style="cursor:pointer;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender">${repliedSender}</span><span class="reply-indicator-text">${repliedText}</span></div>`;
-    }
+                if (groupMember && groupChatSettings.showName) {
+                    const nameLabel = document.createElement('div');
+                    nameLabel.className = 'group-sender-name';
+                    nameLabel.textContent = groupMember.name;
+                    const isSameSenderGroupForName = lastSender === 'group_' + groupMember.name;
+                    if (!isSameSenderGroupForName) contentWrapper.appendChild(nameLabel);
+                } else if (!groupMember && msg.sender !== 'user' && msg.sender !== null &&
+                           (settings.showPartnerNameInChat || showPartnerNameInChat)) {
+                    // Single mode: show partner name when the option is enabled and sender changes
+                    const isSameSenderForName = lastSender === msg.sender;
+                    if (!isSameSenderForName) {
+                        const nameLabel = document.createElement('div');
+                        nameLabel.className = 'group-sender-name';
+                        nameLabel.textContent = settings.partnerName || msg.sender || '对方';
+                        contentWrapper.appendChild(nameLabel);
+                    }
+                }
+                
+                let messageHTML = '';
+                if (msg.replyTo) {
+                    const repliedText = msg.replyTo.text || (msg.replyTo.image ? '🖼 图片' : '[消息]');
+                    const repliedSender = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
+                    messageHTML += `<div class="reply-indicator" data-reply-id="${msg.replyTo.id || ''}" style="cursor:pointer;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender">${repliedSender}</span><span class="reply-indicator-text">${repliedText}</span></div>`;
+                }
 
-    const isImageOnly = !msg.text && !!msg.image;
-    let content = msg.text ? `<div>${msg.text.replace(/\n/g, '<br>')}</div>` : '';
-    if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
-    messageHTML += content;
+                const isImageOnly = !msg.text && !!msg.image;
+                let content = msg.text ? `<div>${msg.text.replace(/\n/g, '<br>')}</div>`: '';
+                if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
+                messageHTML += content;
 
-    const messageDiv = document.createElement('div');
-    if (isImageOnly) {
-        messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} message-image-bubble-none`;
-    } else {
-        messageDiv.className = `message message-${msg.sender === 'user' ? 'sent' : 'received'} ${settings.bubbleStyle}`;
-    }
-    messageDiv.innerHTML = messageHTML;
+                const messageDiv = document.createElement('div');
+                if (isImageOnly) {
+                    messageDiv.className = `message message-${msg.sender === 'user' ? 'sent': 'received'} message-image-bubble-none`;
+                } else {
+                    messageDiv.className = `message message-${msg.sender === 'user' ? 'sent': 'received'} ${settings.bubbleStyle}`;
+                }
+                messageDiv.innerHTML = messageHTML;
 
-    let actionsHTML = '';
-    if (settings.replyEnabled) actionsHTML += `<button class="meta-action-btn reply-btn" title="回复"><i class="fas fa-reply"></i></button>`;
-    const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star';
-    actionsHTML += `<button class="meta-action-btn favorite-action-btn ${msg.favorited ? 'favorited' : ''}" title="${msg.favorited ? '取消收藏' : '收藏'}"><i class="${starIcon}"></i></button>`;
-    actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'message-meta-actions';
-    actionsDiv.innerHTML = actionsHTML;
+                let actionsHTML = '';
+                
+                if (settings.replyEnabled) actionsHTML += `<button class="meta-action-btn reply-btn" title="回复"><i class="fas fa-reply"></i></button>`;
+                
+                const starIcon = msg.favorited ? 'fas fa-star' : 'far fa-star'; 
+                actionsHTML += `<button class="meta-action-btn favorite-action-btn ${msg.favorited ? 'favorited' : ''}" title="${msg.favorited ? '取消收藏' : '收藏'}"><i class="${starIcon}"></i></button>`;
+                
 
-    let metaHTML = '';
-    if (showTimestamp) {
-        const ts = new Date(msg.timestamp);
-        let timeStr;
-        const fmt = settings.timeFormat || 'HH:mm';
-        if (fmt === 'HH:mm:ss') {
-            timeStr = ts.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        } else if (fmt === 'h:mm AM/PM') {
-            timeStr = ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        } else if (fmt === 'h:mm:ss AM/PM') {
-            timeStr = ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
-        } else {
-            timeStr = ts.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-        }
-        metaHTML += `<div class="timestamp">${timeStr}</div>`;
-    }
+actionsHTML += `<button class="meta-action-btn delete-btn" title="删除"><i class="fas fa-trash-alt"></i></button>`;
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-meta-actions';
+                actionsDiv.innerHTML = actionsHTML;
 
-    if (msg.sender === 'user' && settings.readReceiptsEnabled && isLastInSenderGroup) {
-        const rrStyle = settings.readReceiptStyle || 'icon';
-        if (rrStyle === 'text') {
-            if (msg.status === 'read') {
-                metaHTML += `<div class="read-receipt read" style="font-size:9px;letter-spacing:0.3px;font-weight:500;">已读</div>`;
-            } else {
-                metaHTML += `<div class="read-receipt" style="font-size:9px;letter-spacing:0.3px;opacity:0.5;">未读</div>`;
-            }
-        } else {
-            const statusIcon = msg.status === 'read' ? 'fa-check-double' : 'fa-check';
-            metaHTML += `<div class="read-receipt ${msg.status === 'read' ? 'read' : ''}"><i class="fas ${statusIcon}"></i></div>`;
-        }
-    }
+                let metaHTML = '';
+                
+                if (showTimestamp) {
+                    const ts = new Date(msg.timestamp);
+                    let timeStr;
+                    const fmt = settings.timeFormat || 'HH:mm';
+                    if (fmt === 'HH:mm:ss') {
+                        timeStr = ts.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    } else if (fmt === 'h:mm AM/PM') {
+                        timeStr = ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                    } else if (fmt === 'h:mm:ss AM/PM') {
+                        timeStr = ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+                    } else {
+                        timeStr = ts.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+                    }
+                    metaHTML += `<div class="timestamp">${timeStr}</div>`;
+                }
 
-    if (metaHTML !== '') {
-        const metaDiv = document.createElement('div');
-        metaDiv.className = 'message-meta';
-        if (!showTimestamp && !metaHTML.includes('timestamp')) {
-            metaDiv.style.height = 'auto';
-            metaDiv.style.marginTop = '2px';
-            if (settings.inChatAvatarPosition !== 'top') {
-                avatarDiv.style.marginBottom = '18px';
-            }
-        } else {
-            if (settings.inChatAvatarPosition !== 'top') {
-                avatarDiv.style.marginBottom = '26px';
-            }
-        }
-        metaDiv.innerHTML = metaHTML;
-        contentWrapper.append(actionsDiv, messageDiv, metaDiv);
-    } else {
-        contentWrapper.append(actionsDiv, messageDiv);
-    }
-    wrapper.appendChild(contentWrapper);
-    fragment.appendChild(wrapper);
+                if (msg.sender === 'user' && settings.readReceiptsEnabled && isLastInSenderGroup) {
+                    const rrStyle = settings.readReceiptStyle || 'icon';
+                    if (rrStyle === 'text') {
+                        if (msg.status === 'read') {
+                            metaHTML += `<div class="read-receipt read" style="font-size:9px;letter-spacing:0.3px;font-weight:500;">已读</div>`;
+                        } else {
+                            metaHTML += `<div class="read-receipt" style="font-size:9px;letter-spacing:0.3px;opacity:0.5;">未读</div>`;
+                        }
+                    } else {
+                        const statusIcon = msg.status === 'read' ? 'fa-check-double': 'fa-check';
+                        metaHTML += `<div class="read-receipt ${msg.status === 'read' ? 'read': ''}"><i class="fas ${statusIcon}"></i></div>`;
+                    }
+                }
 
-    lastSenderRef.current = groupMember ? ('group_' + groupMember.name) : msg.sender;
-    return fragment;
-}
-
-function renderMessages(preserveScroll = false) {
-    const container = DOMElements.chatContainer;
-    const totalMessages = messages.length;
-    const startIndex = Math.max(0, totalMessages - displayedMessageCount);
-    const msgsToRender = messages.slice(startIndex);
-
-    const historyLoader = document.getElementById('history-loader');
-    if (historyLoader) {
-        historyLoader.style.display = startIndex > 0 ? 'flex' : 'none';
-    }
-
-    DOMElements.emptyState.style.display = totalMessages === 0 ? 'flex' : 'none';
-
-    const oldScrollHeight = container.scrollHeight;
-    const oldScrollTop = container.scrollTop;
-    
-    container.innerHTML = '';
-
-    const fragment = new DocumentFragment();
-    
-    const spacer = document.createElement('div');
-    spacer.style.flex = '1';
-    fragment.appendChild(spacer);
-
-    let lastSenderRef = { current: null };
-    msgsToRender.forEach((msg, i) => {
-        const prevMsg = i > 0 ? msgsToRender[i - 1] : (startIndex > 0 ? messages[startIndex - 1] : null);
-        const nextMsg = i < msgsToRender.length - 1 ? msgsToRender[i + 1] : null;
-        const msgFragment = createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef);
-        fragment.appendChild(msgFragment);
-    });
-
-    container.appendChild(fragment);
-
-    if (preserveScroll) {
-        const newScrollHeight = container.scrollHeight;
-        container.scrollTop = oldScrollTop + (newScrollHeight - oldScrollHeight);
-    } else {
-        requestAnimationFrame(() => {
-            container.scrollTop = container.scrollHeight;
-        });
-    }
-}
-
-const addMessage = (message) => {
-    if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
-    
-    const container = DOMElements.chatContainer;
-    const wasEmpty = messages.length === 0;
-
-    const prevMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-    messages.push(message);
-    
-    if (wasEmpty) {
-        DOMElements.emptyState.style.display = 'none';
-    }
-
-    // --- Update previous message if needed ---
-    const existingWrappers = container.querySelectorAll('.message-wrapper');
-    const lastWrapper = existingWrappers.length > 0 ? existingWrappers[existingWrappers.length - 1] : null;
-    if (lastWrapper && prevMsg) {
-        const currentTs = new Date(message.timestamp).getTime();
-        const prevTs = new Date(prevMsg.timestamp).getTime();
-
-        if (message.sender === prevMsg.sender && message.type === 'normal' && prevMsg.type === 'normal' && (currentTs - prevTs < 60000)) {
-            const timestampEl = lastWrapper.querySelector('.timestamp');
-            if (timestampEl) timestampEl.style.display = 'none';
-            if (prevMsg.sender === 'user') {
-                const receiptEl = lastWrapper.querySelector('.read-receipt');
-                if (receiptEl) receiptEl.style.display = 'none';
-            }
-        }
-    }
-    
-    // --- Append new message ---
-    let lastSenderRef = { current: null };
-    if (prevMsg) {
-        const prevGroupMember = (prevMsg.sender !== 'user' && typeof getGroupMemberForMessage === 'function') ? getGroupMemberForMessage(prevMsg.id) : null;
-        lastSenderRef.current = prevGroupMember ? ('group_' + prevGroupMember.name) : prevMsg.sender;
-    }
-    
-    const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
-    
-    const spacer = container.querySelector('div[style*="flex: 1"]');
-    if (spacer && spacer === container.lastElementChild) {
-        spacer.before(newMsgFragment);
-    } else {
-        container.appendChild(newMsgFragment);
-    }
-
-    requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
-    });
-
-    throttledSaveData();
-};
-
-        window._addCallEvent = (icon, label, detail) => {
-            addMessage({
-                id: Date.now() + Math.random(),
-                sender: 'system',
-                text: label + (detail ? ' · ' + detail : ''),
-                timestamp: new Date(),
-                status: 'received',
-                type: 'call-event',
-                callIcon: icon || 'fa-video',
-                callDetail: detail || null,
-                favorited: false,
-                note: null,
+                if (metaHTML !== '') {
+                    const metaDiv = document.createElement('div');
+                    metaDiv.className = 'message-meta';
+                    if (!showTimestamp && !metaHTML.includes('timestamp')) {
+                         metaDiv.style.height = 'auto'; 
+                         metaDiv.style.marginTop = '2px';
+                         if (settings.inChatAvatarPosition !== 'top') {
+                             avatarDiv.style.marginBottom = '18px';
+                         }
+                    } else {
+                         
+                         if (settings.inChatAvatarPosition !== 'top') {
+                             avatarDiv.style.marginBottom = '26px';
+                         }
+                    }
+                    metaDiv.innerHTML = metaHTML;
+                    contentWrapper.append(actionsDiv, messageDiv, metaDiv);
+                } else {
+                    contentWrapper.append(actionsDiv, messageDiv);
+                }
+                wrapper.appendChild(contentWrapper);
+                fragment.appendChild(wrapper);
+                
+                lastSender = groupMember ? ('group_' + groupMember.name) : msg.sender;
             });
+
+            container.appendChild(fragment);
+
+            if (preserveScroll) {
+                const newScrollHeight = container.scrollHeight;
+                const delta = newScrollHeight - oldScrollHeight;
+                container.scrollTop = Math.max(0, container.scrollTop + delta);
+            } else {
+                requestAnimationFrame(() => {
+                    container.scrollTop = container.scrollHeight;
+                });
+            }
+        }        
+
+        const addMessage = (message) => {
+            if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
+            messages.push(message);
+            displayedMessageCount++;
+            const container = DOMElements.chatContainer;
+            container.style.opacity = '1';
+            renderMessages(false);
+            throttledSaveData();
         };
 
         function optimizeImage(file, maxWidth = 800, quality = 0.7) {
@@ -1339,11 +1195,12 @@ if (!isBatchMode && type === 'normal') {
     const delayRange = settings.replyDelayMax - settings.replyDelayMin;
     const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
 
-    const chance = Math.max(0, Math.min(1, Number(settings.readNoReplyChance) || 0));
-    const shouldIgnore = settings.allowReadNoReply && (Math.random() < chance);
+    // Determine read-no-reply FIRST, before showing any typing indicator
+    const shouldIgnore = settings.allowReadNoReply && (Math.random() < 0.5);
 
+    // Mark messages as read after a more human-like delay (1.5 ~ 4 seconds)
     const readDelay = 1500 + Math.random() * 2500;
-                setTimeout(() => {
+    setTimeout(() => {
         let changed = false;
         messages.forEach(msg => {
             if (msg.sender === 'user' && msg.status !== 'read') {
@@ -1354,19 +1211,18 @@ if (!isBatchMode && type === 'normal') {
         if (changed) { renderMessages(false); throttledSaveData(); }
     }, readDelay);
 
+    // Cancel any pending reply timer and reset it (so rapid messages don't stack replies)
     if (window._pendingReplyTimer) clearTimeout(window._pendingReplyTimer);
     window._pendingReplyTimer = null;
 
-            if (!shouldIgnore) {
+    if (!shouldIgnore) {
+        // Only show typing indicator when we're actually going to reply
         if (settings.typingIndicatorEnabled) {
             const tiWrapper = document.getElementById('typing-indicator-wrapper');
             const tiLabel = document.getElementById('typing-indicator-label');
             const tiAvatar = document.getElementById('typing-indicator-avatar');
             if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
-            if (tiWrapper) { 
-                positionTypingIndicator(); 
-                tiWrapper.style.display = 'block'; 
-            }
+            if (tiWrapper) { positionTypingIndicator(); tiWrapper.style.display = 'block'; }
             if (tiAvatar) {
                 const partnerImg = DOMElements.partner.avatar.querySelector('img');
                 tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
@@ -1378,6 +1234,7 @@ if (!isBatchMode && type === 'normal') {
             simulateReply();
         }, randomDelay);
     }
+    // If shouldIgnore: no typing indicator, no reply — messages stay "read" with no response
 }
 };
 
@@ -1438,6 +1295,7 @@ if (!isBatchMode && type === 'normal') {
         <button class="batch-action-btn batch-send-btn" ${batchMessages.length === 0 ? 'disabled': ''}>发送全部 (${batchMessages.length})</button>
         </div>`;
 
+            // Wire image upload
             const batchImgInput = document.getElementById('batch-image-input');
             if (batchImgInput) {
                 batchImgInput.addEventListener('change', async (e) => {
@@ -1483,13 +1341,6 @@ if (!isBatchMode && type === 'normal') {
         (function() {
             var inputArea = document.querySelector('.input-area-wrapper');
             if (!inputArea) return;
-            if (typeof ResizeObserver === 'undefined') {
-                window.addEventListener('resize', function() {
-                    var tiW = document.getElementById('typing-indicator-wrapper');
-                    if (tiW && tiW.style.display !== 'none') positionTypingIndicator();
-                });
-                return;
-            }
             var ro = new ResizeObserver(function() {
                 var tiW = document.getElementById('typing-indicator-wrapper');
                 if (tiW && tiW.style.display !== 'none') positionTypingIndicator();
@@ -1497,23 +1348,22 @@ if (!isBatchMode && type === 'normal') {
             ro.observe(inputArea);
         })();
 
-        window.simulateReply = function() {
+        function simulateReply() {
             function showTypingIndicator() {
                 if (!settings.typingIndicatorEnabled) return;
                 const tiWrapper = document.getElementById('typing-indicator-wrapper');
                 const tiLabel = document.getElementById('typing-indicator-label');
                 const tiAvatar = document.getElementById('typing-indicator-avatar');
                 if (tiLabel) tiLabel.textContent = (settings.partnerName || '对方') + ' 正在输入';
-                if (tiWrapper) { 
-                    positionTypingIndicator(); 
-                    tiWrapper.style.display = 'block'; 
-                }
+                if (tiWrapper) { positionTypingIndicator(); tiWrapper.style.display = 'block'; }
                 if (tiAvatar) {
                     const partnerImg = DOMElements.partner.avatar.querySelector('img');
                     tiAvatar.innerHTML = partnerImg ? `<img src="${partnerImg.src}">` : '<i class="fas fa-user"></i>';
                 }
                 DOMElements.chatContainer.scrollTop = DOMElements.chatContainer.scrollHeight;
             }
+
+            showTypingIndicator();
 
             let changed = false;
             messages.forEach(msg => {
@@ -1525,6 +1375,7 @@ if (!isBatchMode && type === 'normal') {
                 renderMessages(false); throttledSaveData();
             }
 
+            // Don't call showTypingIndicator() a second time — already shown by sendMessage
 if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 const currentPool = [
                     ...partnerPersonas
@@ -1543,54 +1394,48 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 }
             }
             if (Math.random() < 0.03) {
-                // 对方的“拍一拍”只使用内置动作，不读取我方自定义拍一拍库
-                if (CONSTANTS.POKE_ACTIONS && CONSTANTS.POKE_ACTIONS.length > 0) {
-                    let randomAction = getRandomItem(CONSTANTS.POKE_ACTIONS);
-                    if (typeof window._sanitizePokeTextForDisplay === 'function') {
-                        randomAction = window._sanitizePokeTextForDisplay(randomAction);
-                    }
-                    const pokeText = (typeof window._formatPartnerPokeText === 'function')
-                        ? window._formatPartnerPokeText(`${settings.partnerName} ${randomAction}`)
-                        : `${settings.partnerName} ${randomAction}`;
+                if (customPokes && customPokes.length > 0) {
+        const randomAction = getRandomItem(customPokes);
+                const pokeTypes = [{
+                    prefix: "💫",
+                    text: `${settings.partnerName} ${randomAction}`
+                },
+                    {
+                        prefix: "✨",
+                        text: `${settings.partnerName} ${randomAction}`
+                    },
+                    {
+                        prefix: "🌟",
+                        text: `${settings.partnerName} ${randomAction}`
+                    },
+                    {
+                        prefix: "🥰",
+                        text: `${settings.partnerName} ${randomAction}`
+                    },
+                    {
+                        prefix: "💖",
+                        text: `${settings.partnerName} ${randomAction}`
+                    }];
 
-                    addMessage({
-                        id: Date.now(),
-                        text: pokeText,
-                        timestamp: new Date(),
-                        type: 'system'
-                    });
-                    if (typeof playSound === 'function') playSound('partner_poke');
-                (function(){try{if(window._typingIndicatorAutoHideTimer){clearTimeout(window._typingIndicatorAutoHideTimer);window._typingIndicatorAutoHideTimer=null;}}catch(e){}var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
+               const selectedPoke = getRandomItem(pokeTypes);
+        
+        addMessage({
+            id: Date.now(),
+            text: `${selectedPoke.prefix} ${settings.partnerName} ${randomAction} ${selectedPoke.prefix}`,
+            timestamp: new Date(),
+            type: 'system'
+        });
+        (function(){var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
         return;
     }
 }
 
             const replyCount = Math.random() < 0.75 ? 1: (Math.random() < 0.95 ? 2: 3);
             if (!customReplies || customReplies.length === 0) {
-                showNotification('回复库为空，请先到「自定义回复」中添加内容', 'info', 3500);
+                (function(){var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
+                showNotification('还没有添加字卡，请先到"自定义回复"中添加字卡', 'info', 4000);
                 return;
             }
-            const disabledItemsOnce = (() => {
-                try {
-                    const raw = localStorage.getItem('disabledReplyItems');
-                    return raw ? new Set(JSON.parse(raw)) : new Set();
-                } catch (e) { return new Set(); }
-            })();
-            const disabledGroupItemsOnce = new Set();
-            (window.customReplyGroups || []).forEach(g => {
-                if (g.disabled && Array.isArray(g.items)) g.items.forEach(item => disabledGroupItemsOnce.add(item));
-            });
-            const replyPoolOnce = customReplies
-                .filter(r => !disabledItemsOnce.has(r) && !disabledGroupItemsOnce.has(r))
-                .map(r => String(r || '').trim())
-                .filter(Boolean);
-            if (!replyPoolOnce.length) {
-                showNotification('回复库可用内容为空（可能被分组禁用或屏蔽），请到「自定义回复」中调整', 'info', 4000);
-                return;
-            }
-
-            // 确认有可用回复后再展示“正在输入中”，避免空转
-            showTypingIndicator();
             let delay = 0;
             const recentUserMsgs = settings.replyEnabled
                 ? messages.filter(m => m.sender === 'user' && m.text).slice(-10)
@@ -1599,33 +1444,31 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 delay += settings.replyDelayMin + Math.random() * delayRange;
                 setTimeout(() => {
+                    // Filter disabled individual items AND items from disabled groups
+                    let disabledItems = new Set();
                     try {
-                    const replyPool = replyPoolOnce;
-                    // 被屏蔽或无效项直接换下一个，尽量保证每次都产出可用回复
-                    let replyText = '';
-                    for (let t = 0; t < 6; t++) {
-                        const picked = replyPool[Math.floor(Math.random() * replyPool.length)];
-                        if (picked && String(picked).trim()) {
-                            replyText = String(picked).trim();
-                            break;
-                        }
-                    }
-                    if (!replyText && i === replyCount - 1) {
-                        (function(){try{if(window._typingIndicatorAutoHideTimer){clearTimeout(window._typingIndicatorAutoHideTimer);window._typingIndicatorAutoHideTimer=null;}}catch(e){}var _tiW=document.getElementById('typing-indicator-wrapper');if(_tiW){var _tiInner=_tiW.querySelector('.typing-indicator');if(_tiInner){_tiInner.classList.add('hiding');setTimeout(function(){_tiW.style.display='none';if(_tiInner)_tiInner.classList.remove('hiding');},240);}else{_tiW.style.display='none';}}})();
-                        return;
-                    }
+                        const raw = localStorage.getItem('disabledReplyItems');
+                        if (raw) disabledItems = new Set(JSON.parse(raw));
+                    } catch(e) {}
 
-                    let disabledStickerItems = new Set();
-                    try {
-                        const raw = localStorage.getItem('disabledStickerItems');
-                        if (raw) disabledStickerItems = new Set(JSON.parse(raw));
-                    } catch (e) {}
-                    const enabledStickerPool = (stickerLibrary || []).filter(s => !disabledStickerItems.has(s));
-                    const shouldSendSticker = enabledStickerPool.length > 0 && Math.random() < 0.2;
+                    // Build disabled-group items by iterating disabled groups directly (more reliable)
+                    const disabledGroupItems = new Set();
+                    const _groups = window.customReplyGroups || [];
+                    _groups.forEach(g => {
+                        if (g.disabled && Array.isArray(g.items)) {
+                            g.items.forEach(item => disabledGroupItems.add(item));
+                        }
+                    });
+
+                    const replyPool = customReplies.filter(r => !disabledItems.has(r) && !disabledGroupItems.has(r));
+                    const replyText = replyPool[Math.floor(Math.random() * replyPool.length)];
+
+                    // Bug fix 2: 30% chance partner sends a sticker image instead of (or after) text
+                    const shouldSendSticker = stickerLibrary && stickerLibrary.length > 0 && Math.random() < 0.3;
 
                     let finalText = replyText;
                     let separateEmoji = null;
-                    if (customEmojis && customEmojis.length > 0 && Math.random() < 0.2) {
+                    if (!shouldSendSticker && customEmojis && customEmojis.length > 0 && Math.random() < 0.3) {
                         const emoji = customEmojis[Math.floor(Math.random() * customEmojis.length)];
                         if (settings.emojiMixEnabled !== false) {
                             finalText = Math.random() < 0.5
@@ -1649,13 +1492,16 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                             : null,
                         type: 'normal'
                     });
+                    // Bug fix 4: Send background push notification
                     if (typeof window._sendPartnerNotification === 'function') {
                         window._sendPartnerNotification(settings.partnerName || '对方', finalText);
                     }
+                    // Bug fix 5: Play sound for incoming message
                     playSound('message');
 
+                    // Bug fix 2 (continued): send the sticker as a follow-up image message
                     if (shouldSendSticker) {
-                        const randomSticker = enabledStickerPool[Math.floor(Math.random() * enabledStickerPool.length)];
+                        const randomSticker = stickerLibrary[Math.floor(Math.random() * stickerLibrary.length)];
                         setTimeout(() => {
                             addMessage({
                                 id: Date.now() + i + 2000,
@@ -1687,18 +1533,11 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                                 note: null,
                                 type: 'normal'
                             });
-                            playSound('message');
                         }, 300 + Math.random() * 400);
                     }
 
                     if (i === replyCount - 1) {
                         (function() {
-                            try {
-                                if (window._typingIndicatorAutoHideTimer) {
-                                    clearTimeout(window._typingIndicatorAutoHideTimer);
-                                    window._typingIndicatorAutoHideTimer = null;
-                                }
-                            } catch (e) {}
                             var _tiW = document.getElementById('typing-indicator-wrapper');
                             if (_tiW) {
                                 var _tiInner = _tiW.querySelector('.typing-indicator');
@@ -1713,17 +1552,6 @@ if (partnerPersonas && partnerPersonas.length > 0 && Math.random() < 0.3) {
                                 }
                             }
                         })();
-                    }
-                    } catch (e) {
-                        console.error('[simulateReply] 渲染/回填出错:', e);
-                        // 机制性兜底：出错时至少让“正在输入中”消失，避免假死
-                        try {
-                            (function(){
-                                try { if (window._typingIndicatorAutoHideTimer) { clearTimeout(window._typingIndicatorAutoHideTimer); window._typingIndicatorAutoHideTimer = null; } } catch (e2) {}
-                                var _tiW2 = document.getElementById('typing-indicator-wrapper');
-                                if (_tiW2) _tiW2.style.display = 'none';
-                            })();
-                        } catch (e2) {}
                     }
                 }, delay);
             }
@@ -1821,16 +1649,14 @@ function showModal(modalElement, focusElement = null) {
 
             function closeDialog() { overlay.remove(); }
             overlay.addEventListener('click', e => { if (e.target === overlay) closeDialog(); });
-            const _expCancelBtn = document.getElementById('_exp_cancel');
-            const _expConfirmBtn = document.getElementById('_exp_confirm');
-            if (_expCancelBtn) _expCancelBtn.onclick = closeDialog;
+            document.getElementById('_exp_cancel').onclick = closeDialog;
 
-            if (_expConfirmBtn) _expConfirmBtn.onclick = function() {
-                const inclMsgs     = !!document.getElementById('_exp_msgs')?.checked;
-                const inclSettings = !!document.getElementById('_exp_settings')?.checked;
-                const inclReplies  = !!document.getElementById('_exp_replies')?.checked;
-                const inclAnn      = !!document.getElementById('_exp_ann')?.checked;
-                const inclThemes   = !!document.getElementById('_exp_themes')?.checked;
+            document.getElementById('_exp_confirm').onclick = function() {
+                const inclMsgs     = document.getElementById('_exp_msgs').checked;
+                const inclSettings = document.getElementById('_exp_settings').checked;
+                const inclReplies  = document.getElementById('_exp_replies').checked;
+                const inclAnn      = document.getElementById('_exp_ann').checked;
+                const inclThemes   = document.getElementById('_exp_themes').checked;
 
                 if (!inclMsgs && !inclSettings && !inclReplies && !inclAnn && !inclThemes) {
                     showNotification('请至少选择一项导出内容', 'error');
@@ -1858,14 +1684,7 @@ function showModal(modalElement, focusElement = null) {
                         exportDate: new Date().toISOString(),
                         exportModules: []
                     };
-                    if (inclMsgs)     {
-                        // 永远省略图片字段，只导出文字等基础信息，减小体积
-                        exportObj.messages = messages.map(m => {
-                            const { image, ...rest } = m;
-                            return rest;
-                        });
-                        exportObj.exportModules.push('messages');
-                    }
+                    if (inclMsgs)     { exportObj.messages = messages; exportObj.exportModules.push('messages'); }
                     if (inclSettings) {
                         exportObj.settings = settings;
                         exportObj.exportModules.push('settings');
@@ -1879,11 +1698,7 @@ function showModal(modalElement, focusElement = null) {
                         exportObj.exportModules.push('customReplies');
                     }
                     if (inclAnn)      { exportObj.anniversaries = anniversaries; exportObj.exportModules.push('anniversaries'); }
-                    if (inclThemes)   {
-                        exportObj.customThemes = customThemes;
-                        // stickerLibrary 体积较大，这里不再随聊天备份导出
-                        exportObj.exportModules.push('themes');
-                    }
+                    if (inclThemes)   { exportObj.customThemes = customThemes; exportObj.stickerLibrary = stickerLibrary; exportObj.exportModules.push('themes'); }
 
                     const dataStr = JSON.stringify(exportObj, null, 2);
                     const parts = exportObj.exportModules.join('+');
@@ -1927,84 +1742,7 @@ function showModal(modalElement, focusElement = null) {
                 try {
                     let rawText = e.target.result;
                     if (rawText.charCodeAt(0) === 0xFEFF) rawText = rawText.slice(1);
-                    let importedData = JSON.parse(rawText);
-
-                    // 兼容全量备份格式（type:'full' 或含 indexedDB/localforage 字段）
-                    // 将其转换为 importChatHistory 能识别的标准字段
-                    if (importedData && typeof importedData === 'object' &&
-                        (importedData.type === 'full' || importedData.indexedDB || importedData.localforage) &&
-                        !importedData.messages && !importedData.settings) {
-
-                        const idb = importedData.indexedDB || importedData.localforage || {};
-                        const ls  = importedData.localStorage || {};
-                        const allKv = Object.assign({}, idb, ls);
-
-                        // 找到 sessionId（取第一个带 _chatMessages 的键前缀）
-                        let detectedSid = null;
-                        const appPfx = importedData.appPrefix || 'CHAT_APP_V3_';
-                        for (const k of Object.keys(allKv)) {
-                            if (k.indexOf('_chatMessages') !== -1 && k.startsWith(appPfx)) {
-                                const after = k.slice(appPfx.length);
-                                const u = after.indexOf('_');
-                                if (u > 0) { detectedSid = after.slice(0, u); break; }
-                            }
-                        }
-
-                        const pfxSid = detectedSid ? (appPfx + detectedSid + '_') : null;
-                        const getVal = (suffix) => {
-                            if (pfxSid) {
-                                const v = allKv[pfxSid + suffix];
-                                if (v !== undefined && v !== null) return v;
-                            }
-                            // 无前缀回退
-                            return allKv[suffix] !== undefined ? allKv[suffix] : null;
-                        };
-                        const parseVal = (v) => {
-                            if (v === null || v === undefined) return null;
-                            if (typeof v !== 'string') return v;
-                            try { return JSON.parse(v); } catch(e2) { return v; }
-                        };
-
-                        const converted = {
-                            version: importedData.version || '3.1',
-                            appName:  importedData.appName || 'ChatApp',
-                            exportDate: importedData.exportDate || importedData.timestamp || new Date().toISOString(),
-                            exportModules: []
-                        };
-
-                        const msgs = parseVal(getVal('chatMessages'));
-                        if (Array.isArray(msgs)) { converted.messages = msgs; converted.exportModules.push('messages'); }
-
-                        const chatSettings = parseVal(getVal('chatSettings'));
-                        if (chatSettings && typeof chatSettings === 'object') {
-                            converted.settings = chatSettings;
-                            converted.exportModules.push('settings');
-                        }
-                        // 额外的 localStorage 设置字段
-                        const dgCustomData = parseVal(ls['dg_custom_data'] !== undefined ? ls['dg_custom_data'] : null);
-                        if (dgCustomData) converted.dgCustomData = dgCustomData;
-                        const dgStatusPool = parseVal(ls['dg_status_pool'] !== undefined ? ls['dg_status_pool'] : null);
-                        if (dgStatusPool) converted.dgStatusPool = dgStatusPool;
-                        const customWeatherMap = {};
-                        for (const wk of Object.keys(ls)) {
-                            if (wk && wk.startsWith('customWeather_')) customWeatherMap[wk] = ls[wk];
-                        }
-                        if (Object.keys(customWeatherMap).length) converted.customWeatherMap = customWeatherMap;
-
-                        const replies = parseVal(getVal('customReplies'));
-                        if (Array.isArray(replies)) { converted.customReplies = replies; converted.exportModules.push('customReplies'); }
-
-                        const emojis = parseVal(getVal('customEmojis'));
-                        if (Array.isArray(emojis)) converted.customEmojis = emojis;
-
-                        const ann = parseVal(getVal('anniversaries'));
-                        if (Array.isArray(ann)) { converted.anniversaries = ann; converted.exportModules.push('anniversaries'); }
-
-                        const themes = parseVal(allKv[appPfx + 'customThemes'] !== undefined ? allKv[appPfx + 'customThemes'] : (ls[appPfx + 'customThemes'] || null));
-                        if (themes) { converted.customThemes = themes; converted.exportModules.push('themes'); }
-
-                        importedData = converted;
-                    }
+                    const importedData = JSON.parse(rawText);
 
                     const hasMessages  = importedData.messages && Array.isArray(importedData.messages);
                     const hasSettings  = !!importedData.settings;
@@ -2052,16 +1790,14 @@ function showModal(modalElement, focusElement = null) {
 
                     function closeDialog() { overlay.remove(); }
                     overlay.addEventListener('click', ev => { if (ev.target === overlay) closeDialog(); });
-                    const _impCancelBtn = document.getElementById('_imp_cancel');
-                    const _impConfirmBtn = document.getElementById('_imp_confirm');
-                    if (_impCancelBtn) _impCancelBtn.onclick = closeDialog;
+                    document.getElementById('_imp_cancel').onclick = closeDialog;
 
-                    if (_impConfirmBtn) _impConfirmBtn.onclick = function() {
-                        const doMsgs     = hasMessages  && !!document.getElementById('_imp_msgs')?.checked;
-                        const doSettings = hasSettings  && !!document.getElementById('_imp_settings')?.checked;
-                        const doReplies  = hasReplies   && !!document.getElementById('_imp_replies')?.checked;
-                        const doAnn      = hasAnn       && !!document.getElementById('_imp_ann')?.checked;
-                        const doThemes   = hasThemes    && !!document.getElementById('_imp_themes')?.checked;
+                    document.getElementById('_imp_confirm').onclick = function() {
+                        const doMsgs     = hasMessages  && document.getElementById('_imp_msgs')?.checked;
+                        const doSettings = hasSettings  && document.getElementById('_imp_settings')?.checked;
+                        const doReplies  = hasReplies   && document.getElementById('_imp_replies')?.checked;
+                        const doAnn      = hasAnn       && document.getElementById('_imp_ann')?.checked;
+                        const doThemes   = hasThemes    && document.getElementById('_imp_themes')?.checked;
 
                         if (!doMsgs && !doSettings && !doReplies && !doAnn && !doThemes) {
                             showNotification('请至少选择一项导入内容', 'error');
@@ -2164,8 +1900,8 @@ if (customStatuses && customStatuses.length > 0) {
                 showNotification('数据迁移失败，部分旧数据可能丢失', 'error');
             }
         }
-
-window.initializeSession = async function() {
+async function initializeSession() {
+    
     await migrateData();
 
     const sessionsData = await localforage.getItem(`${APP_PREFIX}sessionList`);
@@ -2183,24 +1919,4 @@ window.initializeSession = async function() {
 
     await localforage.setItem(`${APP_PREFIX}lastSessionId`, SESSION_ID);
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    const chatArea = document.querySelector('.main-chat-area');
-    const historyLoader = document.getElementById('history-loader');
-    
-    if (chatArea && historyLoader && typeof IntersectionObserver !== 'undefined') {
-        const observer = new IntersectionObserver((entries) => {
-            if (entries[0].isIntersecting && messages.length > displayedMessageCount) {
-                loadMoreHistory();
-            }
-        }, {
-            root: chatArea,
-            rootMargin: '200px 0px 0px 0px',
-            threshold: 0.01
-        });
-        observer.observe(historyLoader);
-    }
-});
-
-
 
